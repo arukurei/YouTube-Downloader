@@ -23,17 +23,12 @@ def solo_video_loader():
             video_path = os.path.splitext(os.path.basename(video_file))[0]
             audio_path = os.path.splitext(os.path.basename(audio_file))[0]
 
-            # mp3
-            command = f"ffmpeg -i '../sound/{audio_path}.mp4' '../sound/{audio_path}.mp3'"
-            os.system(command)
-            os.remove(f"../sound/{audio_path}.mp4")
-
             # result
-            command = (f"ffmpeg -i '../video/{video_path}.mp4' -i '../sound/{audio_path}.mp3' "
+            command = (f"ffmpeg -i '../video/{video_path}.mp4' -i '../sound/{audio_path}.m4a' "
                        f"-c:v  copy -c:a aac -map 0:v -map 1:a '{path}/{video_path}.mp4'")
             os.system(command)
             os.remove(f"../video/{video_path}.mp4")
-            os.remove(f"../sound/{video_path}.mp3")
+            os.remove(f"../sound/{video_path}.m4a")
 
             print(" ")
             print("The video is downloaded in MP4")
