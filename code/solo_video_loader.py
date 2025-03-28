@@ -42,3 +42,6 @@ def solo_video_loader():
                   "network connection.")
     else:
         print("The path is wrong or doesn't exist. Please enter the correct path.")
+
+
+solo_video_loader()

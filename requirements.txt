@@ -1,2 +1,2 @@
-pytubefix==8.1.1
-rich==13.9.3
+pytubefix==8.12.3
+rich==13.9.4
