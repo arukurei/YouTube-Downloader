@@ -7,7 +7,7 @@ from curses import wrapper
 from solo_video_loader import solo_video_loader
 from solo_sound_loader import solo_sound_loader
 from playlist_video_loader import playlist_video_loader
-from playlist_sound_converter import playlist_sound_loader
+from playlist_sound_loader import playlist_sound_loader
 
 
 path = os.path.abspath("resize")
@@ -72,8 +72,8 @@ def main(console):
     # color
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, 255, -1)
-    curses.init_pair(2, 0, 255)
+    curses.init_pair(1, curses.COLOR_WHITE, -1)
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     # draw
     selected_row_index = 0
