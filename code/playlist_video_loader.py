@@ -7,7 +7,7 @@ _default_clients["ANDROID_MUSIC"] = _default_clients["ANDROID_CREATOR"]
 
 def load(video, num, path):
     try:
-        video_stream = video.streams.filter(file_extension='mp4').order_by('resolution').desc().first()
+        video_stream = video.streams.filter(adaptive=True, only_video=True).order_by('resolution').desc().first()
         audio_stream = video.streams.get_audio_only()
         if not os.path.exists(f"{path}/{video_stream.default_filename}"):
             video_file = video_stream.download(output_path="../video")
