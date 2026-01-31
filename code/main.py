@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 import curses
 import os
 import subprocess
@@ -54,8 +53,8 @@ class AppManager:
         curses.curs_set(0)
         curses.start_color()
         curses.use_default_colors()
-        curses.init_pair(1, 255, -1)  # Обычный текст
-        curses.init_pair(2, 0, 255)  # Выделенный текст
+        curses.init_pair(1, curses.COLOR_WHITE, -1)
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
         self.apply_resize()
 
     def apply_resize(self):
