@@ -8,10 +8,8 @@ from core import process_single_item
 
 def _get_valid_path():
     path = input("Output Path: ").strip()
-    if os.path.exists(path):
-        return path
-    else:
-        return None
+    if os.path.exists(path): return path
+    else: return None
 
 
 def _wait_input():

@@ -60,8 +60,7 @@ class AppManager:
 
     def apply_resize(self):
         """Применяет системное изменение размера окна."""
-        if os.path.exists(self.resize_path):
-            subprocess.call([self.resize_path, '-s', '40', '100'])
+        if os.path.exists(self.resize_path): subprocess.call([self.resize_path, '-s', '40', '100'])
         self.console.resize(40, 100)
         self.h, self.w = self.console.getmaxyx()
 
@@ -113,8 +112,7 @@ class AppManager:
                 self.selected_idx += 1
             elif key in [10, curses.KEY_ENTER]:
                 should_continue = self.execute_action()
-                if not should_continue:
-                    break
+                if not should_continue: break
             elif key == curses.KEY_RESIZE:
                 self.apply_resize()
 
