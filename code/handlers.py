@@ -1,7 +1,6 @@
 import os
 import getpass
-from pytubefix import YouTube, Playlist
-from pytubefix.exceptions import RegexMatchError
+from yt_dlp import YoutubeDL
 from rich.progress import Progress
 from core import process_single_item
 
@@ -18,49 +17,53 @@ def _wait_input():
 
 def handle_solo(is_audio_only):
     path = _get_valid_path()
-    if path:
-        url = input("Youtube video url: ").strip()
+    if not path: return
+    url = input("Youtube video url: ").strip()
 
-        try:
-            print("Fetching info...")
-            yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
-            print(f"Title: {yt.title}")
+    print("Processing...")
+    status = process_single_item(url, path, is_audio_only)
 
-            status = process_single_item(yt, path, is_audio_only)
-            if status == "Success": print(f"Downloaded successfully in {'MP3' if is_audio_only else 'MP4'}")
-            elif status == "Pass": print("File already exists.")
-            else: print("Error occurred during processing.")
-        except RegexMatchError:
-            print("Invalid URL.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+    if status == "Success":
+        print("Done!")
+    elif status == "Pass":
+        print("Already exists.")
     else:
-        print("Path does not exist.")
+        print("Failed.")
     _wait_input()
+
 
 def handle_playlist(is_audio_only):
     path = _get_valid_path()
-    if path:
-        url = input("Youtube playlist url: ").strip()
+    if not path: return
+    url = input("Youtube playlist url: ").strip()
 
-        try:
-            pl = Playlist(url, use_oauth=True, allow_oauth_cache=True)
-            count = 0
-            with Progress() as progress:
-                task = progress.add_task("[cyan]Processing Playlist...", total=len(pl.videos))
-                for video in pl.videos:
-                    progress.update(task, description=f"Processing: {video.title[:30]}...")
-                    status = process_single_item(video, path, is_audio_only)
-                    if status == "Success": count += 1
-                    progress.update(task, advance=1)
-            print(f"\nFinished! +{count} new files.")
+    try:
+        # Сначала получаем список видео в плейлисте без скачивания
+        with YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:
+            playlist_info = ydl.extract_info(url, download=False)
+            entries = playlist_info.get('entries', [])
 
-        except Exception as e:
-            print(f"Error processing playlist: {e}")
-    else:
-        print("Path does not exist.")
+        print(f"Found: {len(entries)} videos")
+        count = 0
+
+        with Progress() as progress:
+            task = progress.add_task("[cyan]Downloading...", total=len(entries))
+
+            for entry in entries:
+                video_url = entry.get('url') or entry.get('id')
+                if not video_url: continue
+
+                # Обновляем текст в статус-баре
+                progress.update(task, description=f"Loading: {entry.get('title', '')[:20]}...")
+
+                status = process_single_item(video_url, path, is_audio_only)
+                if status == "Success": count += 1
+                progress.update(task, advance=1)
+
+        print(f"\nFinished! +{count} new files.")
+    except Exception as e:
+        print(f"Playlist error: {e}")
     _wait_input()
-
 
 def solo_video_loader(): handle_solo(is_audio_only=False)
 def solo_sound_loader(): handle_solo(is_audio_only=True)
