@@ -208,13 +208,15 @@ jobs:
           name: ${{ env.APP_NAME }}-windows
           path: dist/${{ env.APP_NAME }}.exe
 
-  # ===================== macOS (x86_64 + arm64) =====================
+  # ===================== macOS (arm64, Apple Silicon) =====================
+  # macos-13 (Intel) убран из матрицы: раннеры GitHub для Intel-Mac крайне
+  # дефицитны, очередь может растягиваться на часы. Если понадобится
+  # поддержка Intel-Mac в будущем - можно вернуть второй элемент матрицы
+  # (runner: macos-13, arch: x86_64) обратно, при готовности ждать очередь.
   build-macos:
     strategy:
       matrix:
         include:
-          - runner: macos-13      # Intel
-            arch: x86_64
           - runner: macos-14      # Apple Silicon
             arch: arm64
     runs-on: ${{ matrix.runner }}
