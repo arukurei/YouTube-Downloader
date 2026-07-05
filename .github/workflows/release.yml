@@ -1,0 +1,290 @@
+name: Build Releases
+
+# ========================= НАСТРОЙКИ ПРОЕКТА =========================
+# Меняй только здесь под свой проект - логика ниже универсальна и
+# зеркалит compile.sh / build-appdir.sh 1:1.
+env:
+  APP_NAME: "YouTube-Downloader"
+  ENTRY_POINT: "code/main.py"
+  FOLLOW_IMPORT_PACKAGES: "rich textual"        # --include-package
+  HEAVY_FOLLOW_PACKAGES: "yt_dlp"               # --follow-import-to
+  HEAVY_EXCLUDE_SUBMODULES: "yt_dlp.extractor.lazy_extractors"
+  EXCLUDE_STDLIB: "unittest,pydoc,doctest,tkinter,test"
+  ICON_PATH: "assets/icon.png"
+  APP_KIND: "tui"                               # tui | gui
+  NEEDS_EXTERNAL_BINARY: "yes"                  # yes | no
+  EXTERNAL_BINARY_NAME: "ffmpeg"
+# ======================= КОНЕЦ НАСТРОЕК ПРОЕКТА =======================
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  # ===================== LINUX (AppImage) =====================
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -U nuitka ordered-set zstandard patchelf
+          if [ "${{ env.NEEDS_EXTERNAL_BINARY }}" = "yes" ]; then
+            pip install -U imageio-ffmpeg
+          fi
+
+      - name: Compile with Nuitka
+        run: |
+          FOLLOW_FLAGS=()
+          for pkg in ${{ env.HEAVY_FOLLOW_PACKAGES }}; do
+            FOLLOW_FLAGS+=(--follow-import-to="$pkg")
+          done
+          EXCLUDE_FLAGS=()
+          if [ -n "${{ env.HEAVY_EXCLUDE_SUBMODULES }}" ]; then
+            EXCLUDE_FLAGS+=(--nofollow-import-to="${{ env.HEAVY_EXCLUDE_SUBMODULES }}")
+          fi
+          INCLUDE_FLAGS=()
+          for pkg in ${{ env.FOLLOW_IMPORT_PACKAGES }}; do
+            INCLUDE_FLAGS+=(--include-package="$pkg")
+          done
+
+          python -m nuitka "${{ env.ENTRY_POINT }}" \
+            --standalone \
+            --output-dir=dist \
+            --output-filename="${{ env.APP_NAME }}" \
+            "${FOLLOW_FLAGS[@]}" \
+            "${EXCLUDE_FLAGS[@]}" \
+            "${INCLUDE_FLAGS[@]}" \
+            --nofollow-import-to="${{ env.EXCLUDE_STDLIB }}" \
+            --python-flag=no_asserts,no_docstrings \
+            --lto=no \
+            --disable-cache=ccache \
+            --assume-yes-for-downloads \
+            --jobs=$(nproc)
+
+      - name: Assemble AppDir
+        run: |
+          APPDIR="${{ env.APP_NAME }}.AppDir"
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r dist/main.dist/* "$APPDIR/usr/bin/"
+          cp "${{ env.ICON_PATH }}" "$APPDIR/icon.png"
+
+          if [ "${{ env.NEEDS_EXTERNAL_BINARY }}" = "yes" ]; then
+            BIN_PATH="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+            cp "$BIN_PATH" "$APPDIR/usr/bin/${{ env.EXTERNAL_BINARY_NAME }}"
+            chmod +x "$APPDIR/usr/bin/${{ env.EXTERNAL_BINARY_NAME }}"
+          fi
+
+          cat > "$APPDIR/${{ env.APP_NAME }}.desktop" << EOF
+          [Desktop Entry]
+          Type=Application
+          Name=${{ env.APP_NAME }}
+          Exec=${{ env.APP_NAME }}
+          Icon=icon
+          Categories=Utility;
+          Terminal=false
+          EOF
+
+          if [ "${{ env.APP_KIND }}" = "tui" ]; then
+            cat > "$APPDIR/AppRun" << 'EOF'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          BIN="$HERE/usr/bin/APPNAME_PLACEHOLDER"
+          if [ -t 1 ]; then
+            exec "$BIN" "$@"
+          fi
+          for term in x-terminal-emulator gnome-terminal konsole xfce4-terminal xterm; do
+            if command -v "$term" >/dev/null 2>&1; then
+              case "$term" in
+                gnome-terminal) exec "$term" -- "$BIN" "$@" ;;
+                konsole)        exec "$term" -e "$BIN" "$@" ;;
+                xfce4-terminal)  exec "$term" -e "$BIN $*" ;;
+                *)               exec "$term" -e "$BIN" "$@" ;;
+              esac
+            fi
+          done
+          exit 1
+          EOF
+            sed -i "s/APPNAME_PLACEHOLDER/${{ env.APP_NAME }}/" "$APPDIR/AppRun"
+          else
+            cat > "$APPDIR/AppRun" << 'EOF'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "$HERE/usr/bin/APPNAME_PLACEHOLDER" "$@"
+          EOF
+            sed -i "s/APPNAME_PLACEHOLDER/${{ env.APP_NAME }}/" "$APPDIR/AppRun"
+          fi
+          chmod +x "$APPDIR/AppRun"
+          chmod +x "$APPDIR/usr/bin/${{ env.APP_NAME }}"
+
+      - name: Download appimagetool and build AppImage
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage \
+            "${{ env.APP_NAME }}.AppDir" \
+            "${{ env.APP_NAME }}-x86_64.AppImage"
+          chmod +x "${{ env.APP_NAME }}-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-linux
+          path: ${{ env.APP_NAME }}-x86_64.AppImage
+
+  # ===================== WINDOWS (.exe) =====================
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -U nuitka ordered-set zstandard pillow
+          if ("${{ env.NEEDS_EXTERNAL_BINARY }}" -eq "yes") {
+            pip install -U imageio-ffmpeg
+          }
+
+      - name: Convert icon to .ico
+        run: python -c "from PIL import Image; Image.open('${{ env.ICON_PATH }}').save('icon.ico')"
+
+      - name: Compile with Nuitka
+        shell: bash
+        run: |
+          FOLLOW_FLAGS=()
+          for pkg in ${{ env.HEAVY_FOLLOW_PACKAGES }}; do
+            FOLLOW_FLAGS+=(--follow-import-to="$pkg")
+          done
+          EXCLUDE_FLAGS=()
+          if [ -n "${{ env.HEAVY_EXCLUDE_SUBMODULES }}" ]; then
+            EXCLUDE_FLAGS+=(--nofollow-import-to="${{ env.HEAVY_EXCLUDE_SUBMODULES }}")
+          fi
+          INCLUDE_FLAGS=()
+          for pkg in ${{ env.FOLLOW_IMPORT_PACKAGES }}; do
+            INCLUDE_FLAGS+=(--include-package="$pkg")
+          done
+          EXTRA_DATA=()
+          if [ "${{ env.NEEDS_EXTERNAL_BINARY }}" = "yes" ]; then
+            EXTRA_DATA+=(--include-package-data=imageio_ffmpeg)
+          fi
+          CONSOLE_FLAG=""
+          if [ "${{ env.APP_KIND }}" = "tui" ]; then
+            CONSOLE_FLAG="--windows-console-mode=force"
+          fi
+
+          python -m nuitka "${{ env.ENTRY_POINT }}" \
+            --standalone --onefile \
+            --output-dir=dist \
+            --output-filename="${{ env.APP_NAME }}.exe" \
+            $CONSOLE_FLAG \
+            --windows-icon-from-ico=icon.ico \
+            "${FOLLOW_FLAGS[@]}" \
+            "${EXCLUDE_FLAGS[@]}" \
+            "${INCLUDE_FLAGS[@]}" \
+            "${EXTRA_DATA[@]}" \
+            --nofollow-import-to="${{ env.EXCLUDE_STDLIB }}" \
+            --python-flag=no_asserts,no_docstrings \
+            --lto=no \
+            --disable-cache=ccache \
+            --assume-yes-for-downloads \
+            --mingw64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-windows
+          path: dist/${{ env.APP_NAME }}.exe
+
+  # ===================== macOS (x86_64 + arm64) =====================
+  build-macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13      # Intel
+            arch: x86_64
+          - runner: macos-14      # Apple Silicon
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -U nuitka ordered-set zstandard
+          if [ "${{ env.NEEDS_EXTERNAL_BINARY }}" = "yes" ]; then
+            pip install -U imageio-ffmpeg
+          fi
+
+      - name: Compile with Nuitka
+        run: |
+          FOLLOW_FLAGS=()
+          for pkg in ${{ env.HEAVY_FOLLOW_PACKAGES }}; do
+            FOLLOW_FLAGS+=(--follow-import-to="$pkg")
+          done
+          EXCLUDE_FLAGS=()
+          if [ -n "${{ env.HEAVY_EXCLUDE_SUBMODULES }}" ]; then
+            EXCLUDE_FLAGS+=(--nofollow-import-to="${{ env.HEAVY_EXCLUDE_SUBMODULES }}")
+          fi
+          INCLUDE_FLAGS=()
+          for pkg in ${{ env.FOLLOW_IMPORT_PACKAGES }}; do
+            INCLUDE_FLAGS+=(--include-package="$pkg")
+          done
+          EXTRA_DATA=()
+          if [ "${{ env.NEEDS_EXTERNAL_BINARY }}" = "yes" ]; then
+            EXTRA_DATA+=(--include-package-data=imageio_ffmpeg)
+          fi
+
+          python -m nuitka "${{ env.ENTRY_POINT }}" \
+            --standalone --onefile \
+            --output-dir=dist \
+            --output-filename="${{ env.APP_NAME }}-${{ matrix.arch }}" \
+            "${FOLLOW_FLAGS[@]}" \
+            "${EXCLUDE_FLAGS[@]}" \
+            "${INCLUDE_FLAGS[@]}" \
+            "${EXTRA_DATA[@]}" \
+            --nofollow-import-to="${{ env.EXCLUDE_STDLIB }}" \
+            --python-flag=no_asserts,no_docstrings \
+            --lto=no \
+            --disable-cache=ccache \
+            --assume-yes-for-downloads
+
+      - name: chmod
+        run: chmod +x "dist/${{ env.APP_NAME }}-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-macos-${{ matrix.arch }}
+          path: dist/${{ env.APP_NAME }}-${{ matrix.arch }}
+
+  # ===================== RELEASE =====================
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
