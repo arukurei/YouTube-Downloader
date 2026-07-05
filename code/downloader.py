@@ -10,6 +10,7 @@ from rich import print
 from rich.progress import Progress, BarColumn, TextColumn, ProgressColumn
 from rich.text import Text
 from rich.spinner import Spinner
+from rich.cells import cell_len
 
 import config
 from core import process_single_item, QuietLogger
@@ -134,10 +135,27 @@ def _format_info_line(url: str, path: str, max_part_len: int = 25) -> str:
 
 def _format_row(prefix: str, text: str, width: int = 40) -> str:
     text = str(text).replace('\n', ' ').strip()
-    max_text_len = width - len(prefix)
 
-    if len(text) > max_text_len: text = text[:max_text_len - 3] + "..."
-    else:                        text = text.ljust(max_text_len)
+    # Считаем реальную визуальную ширину префикса
+    prefix_width = cell_len(prefix)
+    max_cell_width = width - prefix_width
+
+    if cell_len(text) > max_cell_width:
+        # Если текст слишком длинный, аккуратно обрезаем его посимвольно
+        target_width = max_cell_width - 3
+        current_text = ""
+        current_width = 0
+        for char in text:
+            char_width = cell_len(char)
+            if current_width + char_width > target_width: break
+            current_text += char
+            current_width += char_width
+
+        text = current_text + "..."
+
+    # Дозаполняем оставшееся пространство пробелами до точной ширины
+    padding = max_cell_width - cell_len(text)
+    text = text + " " * padding
 
     return f"{prefix}{text}"
 
@@ -218,21 +236,21 @@ def handle_download(is_audio_only):
     else:
         path = raw_path_input
 
+    is_test_path = path.lower() in ("test", "virtual_test_directory")
+    if is_test_path: path = "Virtual_Test_Directory"
+
+    if not is_test_path and (not path or not os.path.exists(path)):
+        _clear_screen()
+        print(_draw_box(title_text, border_color="blue"))
+        print()
+        info_line = _format_info_line(url="", path=path)
+        print(_draw_box(info_line, border_color="red", title="[bold red]Error: Invalid Path[/bold red]"))
+        _wait_input()
+        return
+
     url = input("Youtube URL: ").strip()
 
-    is_test_mode = (url.strip().lower() == "/test")
-
-    if is_test_mode:
-        if not path: path = "Virtual_Test_Directory"
-    else:
-        if not path or not os.path.exists(path):
-            _clear_screen()
-            print(_draw_box(title_text, border_color="blue"))
-            print()
-            info_line = _format_info_line(url="", path=path)
-            print(_draw_box(info_line, border_color="red", title="[bold red]Error: Invalid Path[/bold red]"))
-            _wait_input()
-            return
+    is_test_mode = (url.strip().lower() == "/test") or is_test_path
 
     info = _validate_url(url)
 

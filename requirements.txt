@@ -1,2 +1,4 @@
-pytubefix==10.3.6
-rich==14.2.0
+textual
+rich
+yt-dlp
+imageio-ffmpeg
