@@ -1,7 +1,6 @@
 # YouTube-Downloader (YTD)
 
-
-| <img src="assets/icon.png" width="220" /> | A Python-based terminal application for downloading videos and audio from YouTube. It combines a text user interface (TUI) for navigation with a command-line interface for the download process. |
+| <img src="assets/icon.png" width="320" /> | A Python-based terminal application for downloading videos and audio from YouTube. It combines a text user interface (TUI) for navigation with a command-line interface for the download process. |
 |:------------------------------------------| :--- |
 
 ![img.png](assets/img_1.png)
