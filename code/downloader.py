@@ -229,6 +229,10 @@ def handle_download(is_audio_only):
             print(f" [#6c7086][{idx}] {item}[/#6c7086]")
         print()
 
+    print("[#6c7086](Press Enter on any step to cancel)[/#6c7086]")
+    print()
+
+    #PATH
     raw_path_input = input("Output Path: ").strip()
 
     valid_history_choices = tuple(str(i) for i in range(1, HISTORY_MAX_ITEMS + 1))
@@ -240,6 +244,15 @@ def handle_download(is_audio_only):
     is_test_path = path.lower() in ("test", "virtual_test_directory")
     if is_test_path: path = "Virtual_Test_Directory"
 
+    if not raw_path_input:
+        _clear_screen()
+        print(_draw_box(title_text, border_color="blue"))
+        print()
+        info_line = _format_info_line(url="", path=path)
+        print(_draw_box(info_line, border_color="yellow", title="[bold yellow]Path Canceled[/bold yellow]"))
+        _wait_input()
+        return
+
     if not is_test_path and (not path or not os.path.exists(path)):
         _clear_screen()
         print(_draw_box(title_text, border_color="blue"))
@@ -249,7 +262,16 @@ def handle_download(is_audio_only):
         _wait_input()
         return
 
+    #URL
     url = input("Youtube URL: ").strip()
+    if not url:
+        _clear_screen()
+        print(_draw_box(title_text, border_color="blue"))
+        print()
+        info_line = _format_info_line(url=url, path=path)
+        print(_draw_box(info_line, border_color="yellow", title=f"[bold yellow]Link Canceled[/bold yellow]"))
+        _wait_input()
+        return
 
     is_test_mode = (url.strip().lower() == "/test") or is_test_path
 
@@ -265,6 +287,7 @@ def handle_download(is_audio_only):
         _wait_input()
         return
 
+    #PIPELINE
     entries = info['entries']
     is_playlist = info['is_playlist']
 
