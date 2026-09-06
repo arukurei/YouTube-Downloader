@@ -1,6 +1,4 @@
-# YouTube-Downloader (YTD)
-
-# <img src="assets/icon.png" width="34" height="34" valign="bottom" alt="YTD Logo" /> YouTube-Downloader (YTD)
+# <img src="assets/icon.png" width="76" height="76" valign="bottom" alt="YTD Logo" /> YouTube-Downloader (YTD)
 
 > A modern terminal application (TUI) for downloading YouTube videos and audio. Combines an interactive keyboard/mouse interface with a fast, resilient download engine.
 
