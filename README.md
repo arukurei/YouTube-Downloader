@@ -1,11 +1,11 @@
-# <img src="assets/icon.png" width="76" height="76" valign="bottom" alt="YTD Logo" /> YouTube-Downloader (YTD)
-
-> A modern terminal application (TUI) for downloading YouTube videos and audio. Combines an interactive keyboard/mouse interface with a fast, resilient download engine.
+# <img src="assets/icon.png" width="76" height="76" valign="middle" /> YouTube-Downloader (YTD)
 
 [![Release](https://img.shields.io/badge/version-v3.0-blue.svg)](https://github.com/arukurei/YouTube-Downloader/releases)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![Code style](https://img.shields.io/badge/interface-Textual%20%26%20Rich-green.svg)](https://textual.textualize.io/)
 [![yt-dlp](https://img.shields.io/badge/engine-yt--dlp%20binary-red.svg)](https://github.com/yt-dlp/yt-dlp)
+
+> A modern terminal application (TUI) for downloading YouTube videos and audio. Combines an interactive keyboard/mouse interface with a fast, resilient download engine.
 
 ---
 
