@@ -1,6 +1,8 @@
 name: Build Releases
 
 env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
   APP_NAME: "YouTube-Downloader"
   ENTRY_POINT: "code/main.py"
   FOLLOW_IMPORT_PACKAGES: "rich textual"
