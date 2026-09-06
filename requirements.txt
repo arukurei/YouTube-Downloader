@@ -1,4 +1,3 @@
 textual
 rich
-yt-dlp
-imageio-ffmpeg
+portable-ffmpeg

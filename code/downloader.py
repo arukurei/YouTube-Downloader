@@ -3,8 +3,6 @@ import getpass
 import re
 import json
 import time
-from yt_dlp import YoutubeDL
-from yt_dlp.utils import sanitize_filename
 
 from rich import print
 from rich.progress import Progress, BarColumn, TextColumn, ProgressColumn
@@ -13,7 +11,10 @@ from rich.spinner import Spinner
 from rich.cells import cell_len
 
 import config
-from core import process_single_item, QuietLogger
+import core
+
+
+HISTORY_MAX_ITEMS = 3   # сколько недавних путей к папкам запоминать
 
 
 def _clear_screen():
@@ -29,7 +30,7 @@ def _get_history_filepath() -> str:
     if os.name == 'nt': base = os.environ.get('APPDATA', os.path.expanduser('~'))
     else:               base = os.path.join(os.path.expanduser('~'), '.config')
 
-    folder = os.path.join(base, 'loader_app')
+    folder = os.path.join(base, 'YTD')
     try:
         os.makedirs(folder, exist_ok=True)
     except Exception:
@@ -43,7 +44,7 @@ def _load_history() -> list:
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                if isinstance(data, list): return [str(p).strip() for p in data if p][:3]
+                if isinstance(data, list): return [str(p).strip() for p in data if p][:HISTORY_MAX_ITEMS]
         except Exception:
             pass
     return []
@@ -58,7 +59,7 @@ def _save_history(new_path: str):
     if new_path in history: history.remove(new_path)
 
     history.insert(0, new_path)
-    history = history[:3]
+    history = history[:HISTORY_MAX_ITEMS]
 
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -72,6 +73,8 @@ def _parse_error(error_msg: str) -> str:
 
     if "ffmpeg" in err_lower or "ffprobe" in err_lower:
         return "Engine error | FFmpeg is missing"
+    elif "yt-dlp is not installed" in err_lower or "yt-dlp is not available" in err_lower:
+        return "Setup error | yt-dlp unavailable, check connection"
     elif "sign in" in err_lower or "confirm your age" in err_lower or "age-gated" in err_lower:
         return "Age restricted | Video requires login"
     elif "private" in err_lower:
@@ -80,7 +83,7 @@ def _parse_error(error_msg: str) -> str:
         return "Unavailable | Video does not exist"
     elif "country" in err_lower or "geo restriction" in err_lower or "region" in err_lower:
         return "Region locked | Blocked in your country (try VPN)"
-    elif "connection" in err_lower or "network" in err_lower or "urlopen" in err_lower or "timeout" in err_lower:
+    elif "connection" in err_lower or "network" in err_lower or "urlopen" in err_lower or "timeout" in err_lower or "timed out" in err_lower:
         return "Network error | Check connection or try VPN"
     elif "403" in err_lower:
         return "Access blocked | YouTube restricted this request (try VPN)"
@@ -90,8 +93,7 @@ def _parse_error(error_msg: str) -> str:
         return "Disk full | Free up space and try again"
 
     clean_err = error_msg.replace("Error:", "").strip().split("\n")[0]
-    if len(clean_err) > 45:
-        clean_err = clean_err[:42] + "..."
+    if len(clean_err) > 45:  clean_err = clean_err[:42] + "..."
     return f"{clean_err} | Try another video"
 
 
@@ -102,10 +104,8 @@ def _draw_box(text: str, border_color: str = "white", title: str = "") -> str:
     text_len = len(clean_text)
     title_len = len(clean_title)
 
-    if title:
-        min_width = max(text_len, title_len + 4)
-    else:
-        min_width = text_len
+    if title: min_width = max(text_len, title_len + 4)
+    else:     min_width = text_len
 
     padded_text = text + " " * (min_width - text_len)
 
@@ -125,10 +125,8 @@ def _format_info_line(url: str, path: str, max_part_len: int = 25) -> str:
     safe_url = url if url else "..."
     safe_path = path if path else "..."
 
-    if len(safe_url) > max_part_len:
-        safe_url = safe_url[:max_part_len - 3] + "..."
-    if len(safe_path) > max_part_len:
-        safe_path = safe_path[:max_part_len - 3] + "..."
+    if len(safe_url) > max_part_len: safe_url = safe_url[:max_part_len - 3] + "..."
+    if len(safe_path) > max_part_len: safe_path = safe_path[:max_part_len - 3] + "..."
 
     return f"Path: {safe_path} | Link: {safe_url}"
 
@@ -136,12 +134,10 @@ def _format_info_line(url: str, path: str, max_part_len: int = 25) -> str:
 def _format_row(prefix: str, text: str, width: int = 40) -> str:
     text = str(text).replace('\n', ' ').strip()
 
-    # Считаем реальную визуальную ширину префикса
     prefix_width = cell_len(prefix)
     max_cell_width = width - prefix_width
 
     if cell_len(text) > max_cell_width:
-        # Если текст слишком длинный, аккуратно обрезаем его посимвольно
         target_width = max_cell_width - 3
         current_text = ""
         current_width = 0
@@ -153,7 +149,6 @@ def _format_row(prefix: str, text: str, width: int = 40) -> str:
 
         text = current_text + "..."
 
-    # Дозаполняем оставшееся пространство пробелами до точной ширины
     padding = max_cell_width - cell_len(text)
     text = text + " " * padding
 
@@ -162,7 +157,7 @@ def _format_row(prefix: str, text: str, width: int = 40) -> str:
 
 def _check_file_exists(output_dir: str, raw_title: str, is_audio_only: bool) -> bool:
     if not os.path.exists(output_dir): return False
-    clean_title = sanitize_filename(raw_title)
+    clean_title = core.sanitize_filename_basic(raw_title)
     final_ext = ".mp3" if is_audio_only else ".mp4"
 
     for file in os.listdir(output_dir):
@@ -172,21 +167,26 @@ def _check_file_exists(output_dir: str, raw_title: str, is_audio_only: bool) -> 
 
 
 def _validate_url(url):
+    """
+    Возвращает (info_dict_or_None, error_or_None).
+    info_dict: {'entries': [...], 'title': str_or_None, 'is_playlist': bool}
+    """
     if url.strip().lower() == "/test":
         return {
             'title': 'System Visualization Test',
-            'entries': config.MOCK_TEST_CASES
-        }
+            'entries': config.MOCK_TEST_CASES,
+            'is_playlist': True,
+        }, None
 
-    opts = {
-        'quiet': True, 'no_warnings': True, 'extract_flat': True,
-        'noprogress': True, 'ignoreerrors': True, 'logger': QuietLogger()
-    }
-    try:
-        with YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=False)
-    except Exception:
-        return None
+    entries, err = core.extract_info(url)
+    if err: return None, err
+    if not entries: return None, "Error: No valid videos found"
+
+    is_playlist = len(entries) > 1
+    title = None
+    if is_playlist: title = entries[0].get('playlist_title') or entries[0].get('playlist') or "Unknown Playlist"
+
+    return {'entries': entries, 'title': title, 'is_playlist': is_playlist}, None
 
 
 class DynamicIconColumn(ProgressColumn):
@@ -231,7 +231,8 @@ def handle_download(is_audio_only):
 
     raw_path_input = input("Output Path: ").strip()
 
-    if raw_path_input in ("1", "2", "3") and len(history) >= int(raw_path_input):
+    valid_history_choices = tuple(str(i) for i in range(1, HISTORY_MAX_ITEMS + 1))
+    if raw_path_input in valid_history_choices and len(history) >= int(raw_path_input):
         path = history[int(raw_path_input) - 1]
     else:
         path = raw_path_input
@@ -252,27 +253,20 @@ def handle_download(is_audio_only):
 
     is_test_mode = (url.strip().lower() == "/test") or is_test_path
 
-    info = _validate_url(url)
-
-    is_valid = True
-    err_msg = ""
-
-    if not info:
-        is_valid, err_msg = False, "Error: Invalid Link"
-    else:
-        entries = info.get('entries')
-        is_playlist = entries is not None
-        if not is_playlist: entries = [info]
-        if not entries: is_valid, err_msg = False, "Error: No valid videos found"
+    info, err_msg = _validate_url(url)
+    is_valid = info is not None
 
     if not is_valid:
         _clear_screen()
         print(_draw_box(title_text, border_color="blue"))
         print()
         info_line = _format_info_line(url=url, path=path)
-        print(_draw_box(info_line, border_color="red", title=f"[bold red]{err_msg}[/bold red]"))
+        print(_draw_box(info_line, border_color="red", title=f"[bold red]{err_msg or 'Error: Invalid Link'}[/bold red]"))
         _wait_input()
         return
+
+    entries = info['entries']
+    is_playlist = info['is_playlist']
 
     if not is_test_mode: _save_history(path)
 
@@ -296,7 +290,7 @@ def handle_download(is_audio_only):
     icon_error = "✖  "
 
     for idx, entry in enumerate(entries, start=1):
-        video_url = entry.get('url') or entry.get('id')
+        video_url = entry.get('url') or entry.get('webpage_url') or entry.get('id')
         raw_title = entry.get('title') or entry.get('id') or "Unknown Video"
 
         prefix = f"[{idx}/{total_files}] " if is_playlist else ""
@@ -349,7 +343,7 @@ def handle_download(is_audio_only):
                 time.sleep(0.15)
                 result = mock_res
         else:
-            result = process_single_item(video_url, path, is_audio_only, progress_callback=update_progress)
+            result = core.process_single_item(video_url, path, is_audio_only, progress_callback=update_progress)
 
         if result == "Success":
             s_success += 1
